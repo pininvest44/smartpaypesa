@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartPay Bulk STK Push Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+  <div class="max-w-4xl mx-auto space-y-6">
+    
+    <!-- Header -->
+    <header class="border-b border-slate-700 pb-4">
+      <h1 class="text-2xl md:text-3xl font-bold text-emerald-400">Bulk STK Push Dispatcher</h1>
+      <p class="text-slate-400 text-sm mt-1">Rate limited strictly to 30 requests/min (2 seconds per request)</p>
+    </header>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <!-- Input Form -->
+      <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Phone Numbers (One per line or comma-separated)</label>
+          <textarea id="rawNumbers" rows="6" placeholder="0712345678&#10;254787654321&#10;0112345678" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Amount (KES)</label>
+          <input type="number" id="amount" value="150" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Account Reference Base</label>
+          <input type="text" id="reference" value="ORDER_BULK" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <button id="sendBtn" onclick="startBulkPush()" class="w-full bg-emerald-600 hover:bg-emerald-500 font-semibold py-2.5 px-4 rounded-lg transition-colors">
+          Send STK Pushes
+        </button>
+      </div>
+
+      <!-- Execution Status & Logs -->
+      <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4 flex flex-col">
+        <h2 class="text-lg font-semibold border-b border-slate-700 pb-2">Execution Log</h2>
+        
+        <!-- Progress Bar -->
+        <div>
+          <div class="flex justify-between text-xs text-slate-400 mb-1">
+            <span id="progressText">Status: Idle</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="w-full bg-slate-900 rounded-full h-2">
+            <div id="progressBar" class="bg-emerald-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Scrollable Log Box -->
+        <div id="logs" class="bg-slate-900 border border-slate-700 rounded-lg p-3 flex-1 overflow-y-auto font-mono text-xs space-y-2 h-64">
+          <div class="text-slate-500">System ready. Input details and click send.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let isRunning = false;
+
+    function startBulkPush() {
+      if (isRunning) return;
+
+      const rawNumbers = document.getElementById('rawNumbers').value;
+      const amount = document.getElementById('amount').value;
+      const reference = document.getElementById('reference').value;
+
+      if (!rawNumbers.trim() || !amount || !reference) {
+        alert('Please fill in all input fields.');
+        return;
+      }
+
+      document.getElementById('logs').innerHTML = '';
+      document.getElementById('sendBtn').disabled = true;
+      document.getElementById('sendBtn').classList.add('opacity-50');
+      isRunning = true;
+
+      socket.emit('start-bulk-push', { rawNumbers, amount, reference });
+    }
+
+    socket.on('bulk-started', (data) => {
+      document.getElementById('progressText').innerText = `Processing 0 of ${data.total}`;
+      appendLog('system', `Bulk dispatch initialized. Target items: ${data.total}`);
+    });
+
+    socket.on('job-progress', (data) => {
+      const pct = Math.round((data.index / data.total) * 100);
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressPercent').innerText = pct + '%';
+      document.getElementById('progressText').innerText = `Processing ${data.index} of ${data.total}`;
+
+      appendLog(data.status.toLowerCase(), `[${data.index}/${data.total}] ${data.phone} -> ${data.status}: ${data.details}`);
+    });
+
+    socket.on('bulk-completed', () => {
+      document.getElementById('progressText').innerText = 'Completed!';
+      appendLog('system', 'All job queues processed.');
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('sendBtn').classList.remove('opacity-50');
+      isRunning = false;
+    });
+
+    function appendLog(type, text) {
+      const logsDiv = document.getElementById('logs');
+      const entry = document.createElement('div');
+      
+      if (type === 'success') entry.className = 'text-emerald-400';
+      else if (type === 'failed') entry.className = 'text-rose-400';
+      else entry.className = 'text-slate-400';
+
+      entry.innerText = text;
+      logsDiv.appendChild(entry);
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+    }
+  </script>
+</body>
+</html>
