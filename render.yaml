@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: smartpay-bulk-stk
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SMARTPAY_API_URL
+        value: https://api.smartpaypesa.com/v1/stk/push
+      - key: SMARTPAY_API_KEY
+        sync: false
