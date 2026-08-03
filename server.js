@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
-const API_URL = process.env.SMARTPAY_API_URL || 'https://api.smartpaypesa.com/v1/stk/push';
+const API_URL = process.env.SMARTPAY_API_URL || 'https://api.smartpaypesa.com/v1/keys/wallet/destination';
 const API_KEY = process.env.SMARTPAY_API_KEY;
 
 app.use(express.json());
