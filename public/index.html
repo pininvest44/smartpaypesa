@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bulk STK Push Portal</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; background-color: #f8f9fa; color: #333; }
+    .card { background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    h2 { margin-top: 0; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: 600; margin-bottom: 5px; }
+    input, textarea, button { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+    textarea { height: 110px; resize: vertical; }
+    .hint { font-size: 12px; color: #666; margin-top: 3px; }
+    button { background-color: #0d6efd; color: white; border: none; font-weight: 600; cursor: pointer; }
+    button:disabled { background-color: #a5c7fe; cursor: not-allowed; }
+    .log-container { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+    .log-entry { margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+    .SUCCESS { color: #4ece62; }
+    .FAILED { color: #f87171; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Bulk STK Push Dispatcher</h2>
+    <form id="stkForm">
+      <div class="form-group">
+        <label for="phones">Phone Numbers (One per line or comma-separated)</label>
+        <textarea id="phones" placeholder="254712345678&#10;254123456789&#10;0712345678" required></textarea>
+        <div class="hint">Accepts formats: 2547..., 2541..., 07..., 01...</div>
+      </div>
+
+      <div class="form-group">
+        <label for="amount">Amount (KES)</label>
+        <input type="number" id="amount" min="1" max="300000" placeholder="150" required>
+      </div>
+
+      <div class="form-group">
+        <label for="reference">Account Reference (Optional)</label>
+        <input type="text" id="reference" placeholder="SMARTPAY">
+      </div>
+
+      <div class="form-group">
+        <label for="description">Description (Optional)</label>
+        <input type="text" id="description" placeholder="SmartPay Payment">
+      </div>
+
+      <button type="submit" id="submitBtn">Start Bulk Process (5 requests / min)</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Live Execution Logs</h3>
+    <div class="log-container" id="logContainer">
+      <div style="color: #888;">Logs will appear here once execution starts...</div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('stkForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      const logContainer = document.getElementById('logContainer');
+      
+      const rawPhones = document.getElementById('phones').value;
+      const amount = document.getElementById('amount').value;
+      const account_reference = document.getElementById('reference').value;
+      const description = document.getElementById('description').value;
+
+      const phones = rawPhones.split(/[\n,]+/).map(p => p.trim()).filter(p => p.length > 0);
+
+      if (phones.length === 0) return alert('Enter at least one phone number.');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Processing Bulk Requests...';
+      logContainer.innerHTML = '';
+
+      try {
+        const response = await fetch('/api/bulk-stk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phones, amount, account_reference, description })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          const lines = text.split('\n\n');
+
+          lines.forEach(line => {
+            if (line.startsWith('data: ')) {
+              const jsonStr = line.replace('data: ', '');
+              try {
+                const data = JSON.parse(jsonStr);
+                
+                if (data.status === 'COMPLETE') {
+                  const doneEl = document.createElement('div');
+                  doneEl.style.color = '#60a5fa';
+                  doneEl.textContent = `[${new Date().toLocaleTimeString()}] --- ALL PROCESSES COMPLETED ---`;
+                  logContainer.appendChild(doneEl);
+                } else if (data.phone) {
+                  const entry = document.createElement('div');
+                  entry.className = 'log-entry';
+                  entry.innerHTML = `
+                    [${data.timestamp}] <strong>${data.phone}</strong> - 
+                    <span class="${data.status}">${data.status}</span><br>
+                    <small>${JSON.stringify(data.data)}</small>
+                  `;
+                  logContainer.appendChild(entry);
+                  logContainer.scrollTop = logContainer.scrollHeight;
+                }
+              } catch (err) {}
+            }
+          });
+        }
+      } catch (err) {
+        alert('Network or processing error occurred.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Start Bulk Process (5 requests / min)';
+      }
+    });
+  </script>
+</body>
+</html>
